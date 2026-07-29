@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Local tooling / editor config
+.claude/
+.vscode/
+.idea/
+.DS_Store
+
+# Logs & scratch
+*.log
+npm-debug.log*

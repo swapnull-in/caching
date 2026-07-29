@@ -1,0 +1,24 @@
+{
+  "name": "caching",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Learning caching in TypeScript — build one from scratch, then use Redis, with real patterns and pitfalls.",
+  "scripts": {
+    "phase1": "node src/phase1/demo.ts",
+    "phase2": "node src/phase2/demo.ts",
+    "phase3": "node src/phase3/cache-aside.ts",
+    "phase4": "node src/phase4/write-patterns.ts",
+    "phase5": "node src/phase5/stampede.ts",
+    "phase6": "node src/phase6/consistency.ts",
+    "phase7": "node src/phase7/consistent-hashing.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0"
+  },
+  "dependencies": {
+    "ioredis": "^5.11.1"
+  }
+}
