@@ -18,6 +18,8 @@
     "phase11": "node src/phase11/penetration-bloom.ts",
     "phase12": "node src/phase12/sizing.ts",
     "phase13": "node src/phase13/cache-down-resilience.ts",
+    "web": "node web/serve.mjs",
+    "deploy": "npx wrangler pages deploy web --project-name caching",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

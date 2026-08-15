@@ -73,6 +73,20 @@ engines in a few dozen commented lines each.
 | **Consistency race** (cache vs DB) | Phase 6 |
 | **Scaling out** (sharding, node churn) | Phase 7 |
 
+## Interactive Cache Lab
+
+Every phase is also a live instrument in the browser — watch the hit rate climb,
+run a scan that wrecks LRU but not W-TinyLFU, fire 50 requests at an expired key,
+step the stale-read race, flood a bloom filter, and drag the sizing knobs.
+
+```bash
+npm run web        # serves web/index.html at http://localhost:8080 (no deps)
+```
+
+One self-contained static page (self-hosted fonts), grouped by tier. To host it on
+**Cloudflare Pages**: connect this repo in the dashboard with build output `web`
+(auto-deploys on push), or run `npx wrangler login` then `npm run deploy`.
+
 ## Project layout
 
 ```

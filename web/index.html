@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caching — Interactive Lab</title>
+<meta name="description" content="An interactive lab for caching: hit/miss & TTL, LRU/LFU/W-TinyLFU eviction, cache-aside & write patterns, stampede & XFetch, the consistency race, penetration/bloom, hot keys, resilience, consistent hashing, and sizing." />
+<meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0d0d13" media="(prefers-color-scheme: dark)" />
+<link rel="preload" href="fonts/space-grotesk-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/ibm-plex-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+<style>
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/space-grotesk-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:600; font-display:swap; src:url(fonts/space-grotesk-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Space Grotesk"; font-style:normal; font-weight:700; font-display:swap; src:url(fonts/space-grotesk-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/ibm-plex-sans-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Sans"; font-style:normal; font-weight:600; font-display:swap; src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Mono"; font-style:normal; font-weight:400; font-display:swap; src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"IBM Plex Mono"; font-style:normal; font-weight:500; font-display:swap; src:url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); }
+  :root {
+    --bg:#faf9f6; --panel:#ffffff; --panel-2:#f4f2ec; --sidebar-bg:#f4f2ec; --hover:#ebe9e1;
+    --ink:#191a20; --muted:#6c6d78; --line:#e7e3da;
+    --accent:#4b3bff; --accent-soft:#ecebff; --amber:#b96608; --amber-soft:#fbeed6;
+    --good:#0f9d6a; --good-soft:#e0f2ea; --warn:#b96608; --warn-soft:#fbeed6; --bad:#dd4650; --bad-soft:#fbe4e6; --info:#2f6db0;
+    --shadow:0 1px 2px rgba(24,20,40,.04), 0 10px 30px -16px rgba(24,20,40,.18);
+    --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans:"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --display:"Space Grotesk", var(--sans);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0d0d13; --panel:#16161e; --panel-2:#1d1d27; --sidebar-bg:#0a0a10; --hover:#20202c;
+      --ink:#ecebf2; --muted:#9698a6; --line:#282833;
+      --accent:#907fff; --accent-soft:#211f36; --amber:#f0b45a; --amber-soft:#2a2216;
+      --good:#40d98c; --good-soft:#12261e; --warn:#f0b45a; --warn-soft:#2a2216; --bad:#ff6b72; --bad-soft:#2a141a; --info:#6ea8e0;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 14px 34px -18px rgba(0,0,0,.7);
+    }
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body { background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .num, code, .mono { font-variant-numeric:tabular-nums; }
+  .app { display:flex; align-items:flex-start; min-height:100vh; }
+  .sidebar { position:sticky; top:0; height:100vh; width:270px; flex:none; z-index:40; display:flex; flex-direction:column; overflow-y:auto; padding:20px 14px 16px; background:var(--sidebar-bg); border-right:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:11px; padding:4px 10px 16px; margin-bottom:6px; border-bottom:1px solid var(--line); }
+  .glyph { width:32px; height:32px; flex:none; border-radius:9px; background:var(--accent); display:grid; place-items:center; color:#fff; font-family:var(--mono); font-size:17px; box-shadow:0 5px 14px -5px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .brand .wm { display:flex; flex-direction:column; line-height:1.25; }
+  .brand .wm b { font-family:var(--display); font-weight:600; font-size:14.5px; letter-spacing:-.01em; }
+  .brand .wm span { font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  nav.nav { display:flex; flex-direction:column; }
+  .nav-group { margin-top:13px; }
+  .nav-group-label { font-family:var(--mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); padding:0 11px 6px; }
+  .nav-item { display:flex; align-items:center; gap:11px; width:100%; text-align:left; cursor:pointer; background:none; border:none; font-family:var(--sans); font-size:13.5px; color:var(--muted); padding:7px 11px; border-radius:8px; transition:.12s; line-height:1.3; }
+  .nav-item .n { font-family:var(--mono); font-size:11px; color:color-mix(in srgb, var(--muted) 75%, transparent); min-width:15px; text-align:right; }
+  .nav-item:hover { background:var(--hover); color:var(--ink); }
+  .nav-item.active { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+  .nav-item.active .n { color:var(--accent); }
+  .side-foot { margin-top:auto; padding:15px 11px 2px; font-family:var(--mono); font-size:11px; line-height:1.7; color:var(--muted); }
+  .side-foot a { color:var(--muted); text-decoration:none; border-bottom:1px solid var(--line); }
+  .side-foot a:hover { color:var(--accent); border-color:var(--accent); }
+  .main { flex:1; min-width:0; padding:42px clamp(24px,4vw,60px) 100px; }
+  .main-inner { max-width:940px; margin:0 auto; }
+  .topbar, .backdrop { display:none; }
+  .hero-eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 14px; }
+  .hero h1 { font-family:var(--display); font-weight:600; font-size:clamp(31px,4.6vw,47px); margin:0 0 16px; letter-spacing:-.026em; line-height:1.03; max-width:16ch; }
+  .hero h1 em { font-style:normal; color:var(--accent); }
+  .hero p { color:var(--muted); margin:0; max-width:62ch; font-size:16.5px; line-height:1.6; }
+  .hero p strong { color:var(--ink); font-weight:600; }
+  .levers { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px,1fr)); gap:12px; margin:30px 0 4px; }
+  .lever { background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:15px 16px; box-shadow:var(--shadow); }
+  .lever b { font-family:var(--display); font-weight:600; font-size:14px; display:block; margin-bottom:4px; }
+  .lever span { font-size:12.5px; color:var(--muted); line-height:1.5; }
+  .overview-hint { font-size:14.5px; color:var(--muted); margin:24px 0 0; line-height:1.6; max-width:64ch; }
+  .overview-hint b { color:var(--ink); font-weight:600; }
+  section.phase { display:none; }
+  section.phase.active { display:block; animation:fade .22s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(5px); } to { opacity:1; } }
+  .phase h2 { font-family:var(--display); font-weight:600; font-size:25px; margin:0 0 6px; letter-spacing:-.02em; }
+  .phase .lede { color:var(--muted); margin:0 0 20px; max-width:76ch; font-size:15.5px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px 22px; margin-bottom:16px; box-shadow:var(--shadow); }
+  .lab { display:grid; grid-template-columns:270px 1fr; gap:22px; align-items:start; }
+  @media (max-width:720px){ .lab { grid-template-columns:1fr; } }
+  .controls { display:flex; flex-direction:column; gap:13px; }
+  .stage { min-width:0; display:flex; flex-direction:column; gap:14px; }
+  label.fld { display:block; font-family:var(--mono); font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  input[type=range] { width:100%; accent-color:var(--accent); height:4px; }
+  .slabel { display:flex; justify-content:space-between; align-items:baseline; font-family:var(--mono); font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .slabel b { color:var(--ink); font-size:14px; }
+  button.act { font-family:var(--sans); font-size:13px; background:var(--accent); color:#fff; border:none; padding:10px 15px; border-radius:9px; cursor:pointer; font-weight:500; text-align:left; box-shadow:0 4px 12px -5px color-mix(in srgb, var(--accent) 60%, transparent); transition:.14s; }
+  button.act:hover { filter:brightness(1.06); }
+  button.ghost { font-family:var(--sans); font-size:13px; background:var(--panel-2); color:var(--ink); border:1px solid var(--line); padding:9px 13px; border-radius:9px; cursor:pointer; text-align:left; }
+  button.ghost:hover { border-color:var(--accent); }
+  button.ghost.sel { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; } .seg button { flex:1 1 auto; }
+  .keybtns { display:flex; gap:6px; flex-wrap:wrap; }
+  .keybtns button { font-family:var(--mono); font-size:12.5px; padding:7px 11px; }
+  .toggle { display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--ink); cursor:pointer; user-select:none; }
+  .toggle input { width:16px; height:16px; accent-color:var(--accent); }
+  .nav-item:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .verdict { font-family:var(--mono); font-size:13px; border-radius:9px; padding:11px 13px; border:1px solid var(--line); display:flex; gap:10px; align-items:baseline; background:var(--panel-2); }
+  .verdict .dot { width:9px; height:9px; border-radius:50%; flex:none; translate:0 2px; background:var(--muted); }
+  .verdict.ok { background:var(--good-soft); border-color:color-mix(in srgb, var(--good) 40%, transparent); } .verdict.ok .dot { background:var(--good); }
+  .verdict.bad { background:var(--bad-soft); border-color:color-mix(in srgb, var(--bad) 40%, transparent); } .verdict.bad .dot { background:var(--bad); }
+  .verdict.warn { background:var(--warn-soft); border-color:color-mix(in srgb, var(--warn) 40%, transparent); } .verdict.warn .dot { background:var(--warn); }
+  .proof { font-size:13px; color:var(--muted); border-left:3px solid var(--accent); padding:8px 0 8px 13px; margin-top:2px; background:linear-gradient(90deg, var(--accent-soft), transparent 80%); border-radius:0 8px 8px 0; }
+  .proof b { color:var(--ink); }
+  code { font-family:var(--mono); background:var(--accent-soft); color:var(--accent); padding:1px 5px; border-radius:5px; font-size:.88em; }
+  .chip { display:inline-block; font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+  .chip.good { color:var(--good); border-color:color-mix(in srgb,var(--good) 45%,transparent); background:var(--good-soft); }
+  .chip.bad { color:var(--bad); border-color:color-mix(in srgb,var(--bad) 45%,transparent); background:var(--bad-soft); }
+  .big { font-family:var(--mono); font-size:30px; font-variant-numeric:tabular-nums; }
+  .big small { font-size:11px; color:var(--muted); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; display:block; }
+  .meter { height:12px; border-radius:6px; background:var(--panel-2); border:1px solid var(--line); overflow:hidden; }
+  .meter > span { display:block; height:100%; background:var(--good); transition:width .3s; }
+  .cells { display:flex; gap:5px; flex-wrap:wrap; }
+  .cell { font-family:var(--mono); font-size:12.5px; padding:5px 10px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2); }
+  .cell.hit { border-color:color-mix(in srgb,var(--good) 45%,transparent); color:var(--good); background:var(--good-soft); }
+  .cell.miss { border-color:color-mix(in srgb,var(--bad) 45%,transparent); color:var(--bad); background:var(--bad-soft); }
+  .cell.mru { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .barrow { display:grid; grid-template-columns:120px 1fr 58px; align-items:center; gap:10px; margin:6px 0; font-family:var(--mono); font-size:12.5px; }
+  .barrow .bar { height:16px; background:var(--accent-soft); border-radius:5px; overflow:hidden; }
+  .barrow .bar > span { display:block; height:100%; background:var(--accent); transition:width .35s; }
+  .barrow.bad .bar > span { background:var(--bad); } .barrow.good .bar > span { background:var(--good); }
+  .chart { display:flex; align-items:flex-end; gap:5px; height:150px; padding-top:14px; border-bottom:1px solid var(--line); }
+  .col { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:3px; height:100%; }
+  .gp { width:100%; border-radius:3px 3px 0 0; background:var(--accent); transition:height .3s; min-height:1px; }
+  .col .rn { font-family:var(--mono); font-size:9px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); font-family:var(--mono); }
+  th { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:500; }
+  tbody tr:last-child td { border-bottom:none; }
+  .kv { display:flex; justify-content:space-between; font-family:var(--mono); font-size:13px; padding:5px 0; border-bottom:1px solid var(--line); }
+  .kv b { font-size:15px; }
+  .shards { display:flex; gap:10px; flex-wrap:wrap; }
+  .shard { flex:1 1 74px; text-align:center; border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--panel-2); font-family:var(--mono); }
+  .shard.hot { border-color:var(--bad); background:var(--bad-soft); }
+  .shard .sv { font-size:16px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  @media (max-width:880px) {
+    .app { display:block; }
+    .topbar { display:flex; align-items:center; gap:11px; position:sticky; top:0; z-index:30; padding:11px 16px; background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:saturate(1.5) blur(10px); border-bottom:1px solid var(--line); }
+    .topbar b { font-family:var(--display); font-weight:600; font-size:15.5px; }
+    .hamburger { margin-left:auto; display:grid; place-items:center; width:38px; height:38px; border:1px solid var(--line); border-radius:9px; background:var(--panel); color:var(--ink); cursor:pointer; font-family:var(--mono); font-size:17px; }
+    .sidebar { position:fixed; top:0; left:0; height:100dvh; width:286px; transform:translateX(-100%); transition:transform .22s ease; box-shadow:0 0 70px rgba(0,0,0,.28); }
+    .app.nav-open .sidebar { transform:none; }
+    .backdrop { display:block; position:fixed; inset:0; z-index:39; background:rgba(0,0,0,.42); opacity:0; pointer-events:none; transition:opacity .22s; }
+    .app.nav-open .backdrop { opacity:1; pointer-events:auto; }
+    .main { padding:22px 18px 84px; }
+    .lab { grid-template-columns:1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="glyph">⚡</span><span class="wm"><b>Cache Lab</b><span>Caching</span></span></div>
+    <nav class="nav" id="nav" aria-label="Lessons"></nav>
+    <div class="side-foot">Every panel is also a runnable <code style="font-size:10px">npm run phaseN</code>.<br /><a href="https://github.com/swapnull-in/caching" target="_blank" rel="noopener">View source ↗</a></div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+  <main class="main">
+    <div class="topbar"><span class="glyph">⚡</span><b>Cache Lab</b><button class="hamburger" id="hamburger" aria-label="Toggle navigation">≡</button></div>
+    <div class="main-inner">
+
+    <!-- OVERVIEW -->
+    <section class="phase" data-tab="Overview">
+      <div class="hero">
+        <p class="hero-eyebrow">Caching · Interactive Lab</p>
+        <h1>Build a cache, then <em>break</em> it.</h1>
+        <p>A cache trades a little staleness and memory for a lot of speed — and every one of its failure modes
+          (stampede, stale reads, penetration, hot keys, a cold-cache avalanche) is a live instrument here. Each panel
+          is also a runnable <strong>npm run phaseN</strong> script.</p>
+      </div>
+      <div class="levers">
+        <div class="lever"><b>Foundations</b><span>Hit/miss &amp; TTL, and LRU eviction from scratch.</span></div>
+        <div class="lever"><b>Eviction</b><span>FIFO/LRU/LFU vs W-TinyLFU on skew and scans.</span></div>
+        <div class="lever"><b>Patterns</b><span>Cache-aside, write-through, write-back's data loss.</span></div>
+        <div class="lever"><b>Stampede &amp; failure</b><span>Thundering herd, XFetch, the consistency race, penetration.</span></div>
+        <div class="lever"><b>Hot keys &amp; resilience</b><span>The celebrity key, and surviving a cold cache.</span></div>
+        <div class="lever"><b>Scale</b><span>Consistent hashing and back-of-envelope sizing.</span></div>
+      </div>
+      <p class="overview-hint"><b>Pick a lesson in the sidebar.</b> The through-line: a cache is a <em>derived, lossy,
+        faster</em> copy — powerful until an invariant (freshness, the database it's protecting) quietly breaks.</p>
+    </section>
+
+    <!-- 1 · BASICS -->
+    <section class="phase" data-tab="1 · Basics">
+      <h2>A cache from scratch — hit, miss, TTL</h2>
+      <p class="lede">A cache is a fast key→value store in front of a slow source. A <strong>hit</strong> is served from
+        cache; a <strong>miss</strong> falls through to the (slow) database and populates the cache for next time. Read
+        the same keys and watch the hit rate — and DB load — improve.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">read a product (populates on miss)</label><div class="keybtns" id="bz-keys"></div></div>
+          <button class="ghost" id="bz-expire">⏱ Expire all (TTL elapsed)</button>
+          <button class="ghost" id="bz-reset">↺ Reset</button>
+        </div>
+        <div class="stage">
+          <div style="display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap">
+            <div class="big" id="bz-rate">0%<small>hit rate</small></div>
+            <div class="big" id="bz-db" style="font-size:22px">0<small>DB queries</small></div>
+            <div class="big" id="bz-saved" style="font-size:22px">0<small>reads served from cache</small></div>
+          </div>
+          <div><label class="fld">recent reads</label><div class="cells" id="bz-log"></div></div>
+          <p class="proof"><b>The proof:</b> the first read of a key misses and pays the DB (≈150ms); every repeat is a
+            hit (≈1ms) and skips the DB. Locality (a few keys get most traffic) is why a small cache lifts the hit rate
+            fast. TTL is your staleness safety net — expire, and those keys miss once more.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 2 · LRU -->
+    <section class="phase" data-tab="2 · LRU">
+      <h2>LRU eviction — the O(1) recency trick</h2>
+      <p class="lede">A cache can't grow forever, so at capacity it must <strong>evict</strong>. LRU drops the
+        least-recently-used key — betting "recently used → used again soon". Access a key and it jumps to the
+        most-recently-used end; the front of the line is always the next victim.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">access a key (capacity 3)</label><div class="keybtns" id="lru-keys"></div></div>
+          <button class="ghost" id="lru-reset">↺ Reset</button>
+          <div class="verdict" id="lru-verdict"><span class="dot"></span><span id="lru-vtext">Access keys and watch the least-recently-used one get evicted.</span></div>
+        </div>
+        <div class="stage">
+          <div><label class="fld">cache · least → most recently used</label><div class="cells" id="lru-cells"></div></div>
+          <p class="proof"><b>The proof:</b> the Map remembers insertion order; on access we delete-and-reinsert so the
+            key moves to the MRU end, and the first entry is always the LRU victim — all O(1). LRU's weakness (next
+            panel): a one-pass <em>scan</em> of cold keys evicts your whole hot set.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 10 · EVICTION FAMILY -->
+    <section class="phase" data-tab="10 · Eviction Family">
+      <h2>FIFO · LRU · LFU · W-TinyLFU</h2>
+      <p class="lede">LRU bets on recency, LFU on frequency, W-TinyLFU <strong>admits by frequency</strong> (a scan's
+        one-hit keys never displace the hot set). Run a skewed workload, then a scan, and compare hit rates.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="ev-skew">▶ Run skewed (Zipf) workload</button>
+          <button class="act" id="ev-scan">▶ Run scan + hot-set workload</button>
+          <div class="verdict" id="ev-verdict"><span class="dot"></span><span id="ev-vtext">Run a workload to compare the four policies.</span></div>
+        </div>
+        <div class="stage">
+          <div id="ev-bars"></div>
+          <p class="proof"><b>The proof:</b> on a skew, frequency-aware policies win. On a <b>scan</b>, LRU and FIFO collapse
+            — each burst of cold keys flushes the hot set — while <b>LFU and W-TinyLFU</b> reject the one-hit-wonders and
+            protect it. W-TinyLFU is best-or-tied on <em>both</em> workloads (its small recency window keeps LRU's edge on
+            skew), which is why Caffeine ships it.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 3 · CACHE-ASIDE -->
+    <section class="phase" data-tab="3 · Cache-aside">
+      <h2>Cache-aside — the dominant read pattern</h2>
+      <p class="lede">The cache sits <em>to the side</em> of the DB; the app coordinates. Read: try cache → on miss,
+        query DB and populate. Write: update the DB and <strong>invalidate</strong> the key so the next read repopulates.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="ca-read">▶ Read product 1</button>
+          <button class="ghost" id="ca-write">✎ Write (update DB + invalidate)</button>
+          <button class="ghost" id="ca-reset">↺ Reset</button>
+          <div class="verdict" id="ca-verdict"><span class="dot"></span><span id="ca-vtext">Read once (miss), again (hits), then write and read again.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap">
+            <div class="big" id="ca-db" style="font-size:22px">0<small>DB queries</small></div>
+            <div class="big" id="ca-last" style="font-size:22px">—<small>last read</small></div>
+          </div>
+          <div><label class="fld">read log</label><div class="cells" id="ca-log"></div></div>
+          <p class="proof"><b>The proof:</b> the first read misses (150ms DB); repeats are ~1ms hits. A write invalidates
+            the key, so the next read misses once more and repopulates. Simple and resilient — if the cache is down you
+            just always miss (degraded, not broken). The subtle stale-read race is panel 6.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 4 · WRITE PATTERNS -->
+    <section class="phase" data-tab="4 · Write Patterns">
+      <h2>Write-aside · write-through · write-back</h2>
+      <p class="lede">Reads are easy; writes hold the trade-offs. <strong>Write-through</strong> keeps the cache warm but
+        pays DB latency every write; <strong>write-back</strong> is fastest but if the cache dies before the flush, those
+        writes are <em>gone</em>.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">strategy</label><div class="seg"><button class="ghost sel" id="wp-aside">aside</button><button class="ghost" id="wp-through">through</button><button class="ghost" id="wp-back">back</button></div></div>
+          <button class="act" id="wp-write">✎ Write balance = 350</button>
+          <button class="ghost" id="wp-crash" style="display:none">💥 Crash cache before flush</button>
+          <button class="ghost" id="wp-flush" style="display:none">↳ Flush to DB</button>
+          <button class="ghost" id="wp-reset">↺ Reset</button>
+          <div class="verdict" id="wp-verdict"><span class="dot"></span><span id="wp-vtext">Pick a strategy and write.</span></div>
+        </div>
+        <div class="stage">
+          <div class="kv"><span>cache</span><b id="wp-cache">balance = 100</b></div>
+          <div class="kv"><span>database</span><b id="wp-dbv">balance = 100</b></div>
+          <div class="kv"><span>dirty (unflushed)</span><b id="wp-dirty">—</b></div>
+          <p class="proof"><b>The proof:</b> write-through updates both synchronously (consistent, but you pay ~100ms DB
+            latency and cache things that may never be read). Write-back returns instantly and coalesces repeats, but a
+            crash before flush loses the dirty set — great for counters/metrics, <b>never</b> for money.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 5 · STAMPEDE -->
+    <section class="phase" data-tab="5 · Stampede">
+      <h2>Cache stampede (thundering herd)</h2>
+      <p class="lede">A hot key expires and, in the same instant, every in-flight request misses and hammers the DB to
+        recompute the <em>same</em> value. Three fixes: <strong>single-flight</strong> (one recomputes, the rest share),
+        jittered TTL, and <strong>stale-while-revalidate</strong> (serve stale, refresh in the background).</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">fix</label><div class="seg"><button class="ghost sel" id="st-none">none</button><button class="ghost" id="st-sf">single-flight</button><button class="ghost" id="st-swr">SWR</button></div></div>
+          <button class="act" id="st-run">▶ 50 concurrent requests hit the expired key</button>
+          <div class="verdict" id="st-verdict"><span class="dot"></span><span id="st-vtext">Run it with no fix, then single-flight, then SWR.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap">
+            <div class="big" id="st-db">—<small>DB calls</small></div>
+            <div class="big" id="st-served" style="font-size:22px">—<small>requests served</small></div>
+          </div>
+          <p class="proof"><b>The proof:</b> naive → <b>50 DB calls</b> (the herd), the cache aimed a firehose at the DB.
+            Single-flight coalesces to <b>1</b>. SWR serves the stale value to all 50 instantly and does <b>0</b> blocking
+            calls (one background refresh). Pick by shape: one hot key → single-flight; many keys expiring together →
+            jitter; staleness OK → SWR.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 9 · XFETCH -->
+    <section class="phase" data-tab="9 · XFetch">
+      <h2>Probabilistic early expiration (XFetch)</h2>
+      <p class="lede">The lock-free stampede fix: on each read of a near-expiry key, flip a weighted coin to refresh
+        <em>early</em>. One lucky request recomputes just ahead of the TTL, so the herd never synchronizes — no lock, no
+        coordination. Rule: refresh if <code>now − Δ·β·ln(rand) ≥ expiry</code>.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">strategy</label><div class="seg"><button class="ghost sel" id="xf-hard">hard TTL</button><button class="ghost" id="xf-x">XFetch</button></div></div>
+          <div><div class="slabel"><span>β (eagerness)</span><b id="xf-bval">1.0</b></div><input type="range" id="xf-beta" min="0.5" max="3" step="0.5" value="1" /></div>
+          <button class="act" id="xf-run">▶ Run 30 ticks · 10 readers/tick</button>
+          <div class="verdict" id="xf-verdict"><span class="dot"></span><span id="xf-vtext">Run hard-TTL, then XFetch, and compare the recompute spikes.</span></div>
+        </div>
+        <div class="stage">
+          <div class="chart" id="xf-chart"></div>
+          <div style="font-family:var(--mono); font-size:12px; color:var(--muted)">recomputes per tick · <span id="xf-total"></span></div>
+          <p class="proof"><b>The proof:</b> hard TTL fires the whole herd at each expiry (a spike of ~10). XFetch spreads
+            recomputes to at most ~1 per tick — one request refreshes ahead of the cliff, everyone else keeps hitting the
+            fresh value. Higher β refreshes earlier/more often. It composes with jitter and single-flight.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 6 · CONSISTENCY RACE -->
+    <section class="phase" data-tab="6 · Consistency Race">
+      <h2>The read-repair race — stale forever</h2>
+      <p class="lede">"Write DB, delete cache key" sounds safe, but a slow reader can interleave and leave the cache
+        holding a <strong>stale</strong> value until TTL. Step the race, then turn on versioned/CAS writes to reject the
+        stale write.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="cr-cas" /> Versioned / CAS writes</label>
+          <button class="ghost" id="cr-s1">① reader reads v1, then stalls</button>
+          <button class="ghost" id="cr-s2">② writer sets v2, deletes key</button>
+          <button class="ghost" id="cr-s3">③ reader wakes, writes its old v1</button>
+          <button class="ghost" id="cr-reset">↺ Reset</button>
+          <div class="verdict" id="cr-verdict"><span class="dot"></span><span id="cr-vtext">Step ①②③ in order, with CAS off then on.</span></div>
+        </div>
+        <div class="stage">
+          <div class="kv"><span>database</span><b id="cr-db">k = v1</b></div>
+          <div class="kv"><span>cache</span><b id="cr-cache">k = (empty)</b></div>
+          <p class="proof"><b>The proof:</b> the delete "happened" — but <em>before</em> the slow reader wrote back the v1
+            it read earlier, so the cache serves v1 forever while the DB says v2. Fixes: a TTL backstop (bounds the
+            damage), delayed double-delete, <b>versioned/CAS</b> (reject a write whose version is stale), or CDC-driven
+            eviction decoupled from request timing.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 11 · PENETRATION -->
+    <section class="phase" data-tab="11 · Penetration">
+      <h2>Cache penetration — a bloom filter guard</h2>
+      <p class="lede">A cache only accelerates keys that <em>exist</em>. A flood of requests for nonexistent keys misses
+        the cache every time and hammers the DB. A <strong>bloom filter</strong> rejects "definitely absent" keys in O(1)
+        (with a small false-positive rate); short-TTL negative caching handles the rest.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="pn-bloom" /> Bloom filter guard</label>
+          <button class="act" id="pn-run">▶ Flood 500 requests for nonexistent keys</button>
+          <div class="verdict" id="pn-verdict"><span class="dot"></span><span id="pn-vtext">Run it with the bloom off, then on.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex; gap:22px; align-items:flex-end; flex-wrap:wrap">
+            <div class="big" id="pn-db">—<small>DB queries</small></div>
+            <div class="big" id="pn-fp" style="font-size:22px">—<small>bloom false-positive rate</small></div>
+          </div>
+          <p class="proof"><b>The proof:</b> without a guard, 500 bogus keys → <b>500 DB queries</b> (the cache protected
+            nothing). A bloom preloaded with the real keys short-circuits ~98% as "definitely absent" — DB queries drop
+            to the residual false-positive fraction. Pair it with short-TTL negative caching, minding the
+            read-after-create gotcha.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 8 · HOT KEYS -->
+    <section class="phase" data-tab="8 · Hot Keys">
+      <h2>Hot keys — the celebrity problem</h2>
+      <p class="lede">One key (a celebrity, a flash sale) takes a huge share of traffic and hotspots a single shard.
+        Hot <strong>reads</strong> want a near-cache or key replication; hot <strong>writes</strong> want a sharded
+        counter — different directions, different tools.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">hot-read mitigation</label><div class="seg"><button class="ghost sel" id="hk-none">none</button><button class="ghost" id="hk-near">near-cache</button><button class="ghost" id="hk-repl">replicate</button></div></div>
+          <button class="act" id="hk-run">▶ Send 10,000 reads to the hot key</button>
+          <div class="verdict" id="hk-verdict"><span class="dot"></span><span id="hk-vtext">Send the burst with no mitigation, then near-cache, then replicate.</span></div>
+        </div>
+        <div class="stage">
+          <div><label class="fld">load reaching the shared cache (per shard)</label><div class="shards" id="hk-shards"></div></div>
+          <p class="proof"><b>The proof:</b> unmitigated, one shard eats all 10,000 reads. A near-cache (L1 on each app
+            server) drops the shared L2 to ~one warm-up per server; replicating the value across N keys spreads it ~N×.
+            Neither helps hot <em>writes</em> — that needs a sharded counter (write a random shard, sum on read).</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 13 · RESILIENCE -->
+    <section class="phase" data-tab="13 · Resilience">
+      <h2>Cache-down resilience — survive a cold cache</h2>
+      <p class="lede">When the cache goes cold (flush, restart, node loss) all traffic hits the DB at once. A
+        <strong>concurrency limiter</strong> caps in-flight DB queries and a <strong>circuit breaker</strong> sheds the
+        rest fast — so the DB serves what it can and recovers, instead of collapsing.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" id="rs-fix" /> Concurrency limiter + circuit breaker</label>
+          <button class="act" id="rs-run">▶ Cache goes cold — run 12 rounds</button>
+          <div class="verdict" id="rs-verdict"><span class="dot"></span><span id="rs-vtext">Run it with the protection off, then on.</span></div>
+        </div>
+        <div class="stage">
+          <div class="chart" id="rs-chart"></div>
+          <div style="font-family:var(--mono); font-size:12px; color:var(--muted)">success rate per round · DB capacity is the dashed line</div>
+          <p class="proof"><b>The proof:</b> naive → the DB is drowned every round (in-flight ≫ capacity), goodput stays
+            ~<b>0%</b> and the cache can't even refill — metastable. The limiter holds in-flight ≤ capacity and the breaker
+            fails fast, so a bounded fraction is served, the DB stays healthy, and as the cache warms the success rate
+            <b>recovers to 100%</b>.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 7 · CONSISTENT HASHING -->
+    <section class="phase" data-tab="7 · Consistent Hashing">
+      <h2>Consistent hashing — add a node without a miss storm</h2>
+      <p class="lede"><code>node = hash(key) % N</code> remaps almost <em>every</em> key when N changes — a cache-wide
+        miss storm. A hash <strong>ring</strong> with virtual nodes moves only ~1/N of keys when you add or remove one.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><label class="fld">scheme</label><div class="seg"><button class="ghost" id="ch-naive">naive % N</button><button class="ghost sel" id="ch-ring">ring + vnodes</button></div></div>
+          <button class="act" id="ch-add">＋ Add a node</button>
+          <button class="ghost" id="ch-remove">－ Remove a node</button>
+          <button class="ghost" id="ch-reset">↺ Reset to 4 nodes</button>
+          <div class="verdict" id="ch-verdict"><span class="dot"></span><span id="ch-vtext">Add a node under each scheme and compare how many keys remap.</span></div>
+        </div>
+        <div class="stage">
+          <div class="big" id="ch-remap" style="font-size:26px">—<small>of 10,000 keys remapped on the last change</small></div>
+          <div><label class="fld">load distribution across nodes</label><div id="ch-dist"></div></div>
+          <p class="proof"><b>The proof:</b> naive modulo remaps ~80–100% of keys on a single add — every one becomes a
+            miss that stampedes the DB. On the ring only the keys in one arc move (~1/N), and virtual nodes keep the arcs
+            even so no node is overloaded. This is why every real distributed cache uses it.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- 12 · SIZING -->
+    <section class="phase" data-tab="12 · Sizing">
+      <h2>Sizing — the back-of-envelope math</h2>
+      <p class="lede">Sizing is a formula, not a guess: DB load = <code>QPS × (1 − hit)</code> (nonlinear — the last few
+        percent shed the most), memory = working-set × overhead × replicas × headroom, and average latency =
+        <code>hit × cache + miss × DB</code>. Drag the knobs.</p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div><div class="slabel"><span>total QPS</span><b id="sz-qval">100k</b></div><input type="range" id="sz-qps" min="10" max="500" step="10" value="100" /></div>
+          <div><div class="slabel"><span>hit ratio</span><b id="sz-hval">95%</b></div><input type="range" id="sz-hit" min="50" max="999" step="1" value="950" /></div>
+          <div><div class="slabel"><span>hot items (millions)</span><b id="sz-ival">50</b></div><input type="range" id="sz-items" min="1" max="200" step="1" value="50" /></div>
+          <div><div class="slabel"><span>avg item size (KB)</span><b id="sz-sval">2</b></div><input type="range" id="sz-size" min="1" max="16" step="1" value="2" /></div>
+          <div><div class="slabel"><span>replicas</span><b id="sz-rval">2</b></div><input type="range" id="sz-rep" min="1" max="3" step="1" value="2" /></div>
+        </div>
+        <div class="stage">
+          <div class="kv"><span>DB queries/sec = QPS × (1 − hit)</span><b id="sz-dbqps" style="color:var(--accent)">—</b></div>
+          <div class="kv"><span>cache memory (× overhead × replicas × headroom)</span><b id="sz-mem">—</b></div>
+          <div class="kv"><span>avg latency (1ms cache · 50ms DB)</span><b id="sz-lat">—</b></div>
+          <div style="margin-top:6px"><label class="fld">DB load as hit ratio climbs (100k QPS)</label>
+            <table><thead><tr><th>hit</th><th>DB qps</th><th>vs previous</th></tr></thead><tbody id="sz-sweep"></tbody></table></div>
+          <p class="proof"><b>The proof:</b> going 95% → 99% cuts DB load 5× (5k → 1k), 99% → 99.9% another 10× — the last
+            few points of hit rate carry the most load-shedding. Present sizing as a formula, then plug numbers;
+            interviewers grade the method, not the arithmetic.</p>
+        </div>
+      </div></div>
+    </section>
+
+    <div class="side-foot" style="margin-top:24px; padding-top:22px; border-top:1px solid var(--line); text-align:center">Browser port of the <code style="font-size:10px">src/phase*</code> scripts · same simulations · MIT</div>
+    </div><!-- /main-inner -->
+  </main>
+</div>
+
+<script>
+const sections = [...document.querySelectorAll('section.phase')];
+const navEl = document.getElementById('nav'), appEl = document.getElementById('app');
+const tabButtons = [];
+const slug = s => s.dataset.tab.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const closeNav = () => appEl.classList.remove('nav-open');
+const TIER_OF = {
+  'overview':'Overview',
+  '1-basics':'Foundations', '2-lru':'Foundations',
+  '10-eviction-family':'Eviction',
+  '3-cache-aside':'Patterns', '4-write-patterns':'Patterns',
+  '5-stampede':'Stampede & failure', '9-xfetch':'Stampede & failure', '6-consistency-race':'Stampede & failure', '11-penetration':'Stampede & failure',
+  '8-hot-keys':'Hot keys & resilience', '13-resilience':'Hot keys & resilience',
+  '7-consistent-hashing':'Scale', '12-sizing':'Scale',
+};
+navEl.setAttribute('role','tablist'); navEl.setAttribute('aria-orientation','vertical');
+let curTier=null, groupEl=null;
+sections.forEach((sec,i)=>{ const id=slug(sec), tier=TIER_OF[id]||'More';
+  if(tier!==curTier){ groupEl=document.createElement('div'); groupEl.className='nav-group';
+    const h=document.createElement('div'); h.className='nav-group-label'; h.textContent=tier; groupEl.appendChild(h); navEl.appendChild(groupEl); curTier=tier; }
+  sec.id='panel-'+id; sec.setAttribute('role','tabpanel');
+  const parts=sec.dataset.tab.split('·').map(s=>s.trim());
+  const b=document.createElement('button'); b.className='nav-item'; b.setAttribute('role','tab');
+  b.innerHTML=`<span class="n">${parts.length>1?parts[0]:''}</span><span class="t">${parts.length>1?parts[1]:parts[0]}</span>`;
+  b.onclick=()=>{ activate(i,true); closeNav(); };
+  b.onkeydown=(e)=>{ const d=e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:e.key==='Home'?'first':e.key==='End'?'last':0; if(!d)return; e.preventDefault();
+    const n=d==='first'?0:d==='last'?sections.length-1:(i+d+sections.length)%sections.length; activate(n,true); tabButtons[n].focus(); };
+  tabButtons.push(b); groupEl.appendChild(b); });
+function activate(i,push){ sections.forEach((s,j)=>s.classList.toggle('active',i===j));
+  tabButtons.forEach((b,j)=>{ const on=i===j; b.classList.toggle('active',on); b.setAttribute('aria-selected',String(on)); b.tabIndex=on?0:-1; });
+  if(push && location.hash.slice(1)!==slug(sections[i])) history.replaceState(null,'','#'+slug(sections[i]));
+  window.scrollTo({ top:0, behavior: reduceMotion?'auto':'smooth' }); }
+function fromHash(){ const i=sections.findIndex(s=>slug(s)===location.hash.slice(1)); activate(i>=0?i:0,false); }
+addEventListener('hashchange',fromHash); fromHash();
+document.getElementById('hamburger')?.addEventListener('click',()=>appEl.classList.toggle('nav-open'));
+document.getElementById('backdrop')?.addEventListener('click',closeNav);
+addEventListener('keydown',e=>{ if(e.key==='Escape') closeNav(); });
+
+const $=(s,r=document)=>r.querySelector(s), el=(t,c)=>{ const n=document.createElement(t); if(c)n.className=c; return n; };
+function verdict(sel,tsel,kind,text){ const v=$(sel); v.className='verdict '+kind; $(tsel).innerHTML=text; }
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hash32(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } h^=h>>>16; h=Math.imul(h,0x85ebca6b)>>>0; h^=h>>>13; h=Math.imul(h,0xc2b2ae35)>>>0; h^=h>>>16; return h>>>0; }
+
+/* ══ 1 · BASICS ══ */
+(function(){
+  const KEYS=[1,2,3,4,5]; let cache, hits, misses, db;
+  function reset(){ cache=new Set(); hits=0; misses=0; db=0; $('#bz-log').innerHTML=''; paint(); }
+  function paint(){ const total=hits+misses; $('#bz-rate').innerHTML=(total?Math.round(hits/total*100):0)+'%<small>hit rate</small>';
+    $('#bz-db').innerHTML=db+'<small>DB queries</small>'; $('#bz-saved').innerHTML=hits+'<small>reads served from cache</small>'; }
+  function read(k){ const hit=cache.has(k); if(hit) hits++; else { misses++; db++; cache.add(k); }
+    const c=el('span','cell '+(hit?'hit':'miss')); c.textContent=`#${k} ${hit?'HIT 1ms':'MISS 150ms'}`;
+    const log=$('#bz-log'); log.prepend(c); while(log.children.length>12) log.lastChild.remove(); paint(); }
+  const kb=$('#bz-keys'); KEYS.forEach(k=>{ const b=el('button','ghost'); b.textContent='read #'+k; b.onclick=()=>read(k); kb.appendChild(b); });
+  $('#bz-expire').onclick=()=>{ cache.clear(); const c=el('span','cell'); c.textContent='TTL expired — all keys evicted'; $('#bz-log').prepend(c); };
+  $('#bz-reset').onclick=reset; reset();
+})();
+
+/* ══ 2 · LRU ══ */
+(function(){
+  const CAP=3, KEYS=['a','b','c','d','e','f']; let store;
+  function reset(){ store=new Map(); paint('Access keys and watch the least-recently-used one get evicted.','warn'); }
+  function paint(msg,kind){ const cells=$('#lru-cells'); cells.innerHTML='';
+    [...store.keys()].forEach((k,i,arr)=>{ const c=el('span','cell'+(i===arr.length-1?' mru':'')); c.textContent=k; cells.appendChild(c); });
+    if(msg) verdict('#lru-verdict','#lru-vtext',kind||'warn',msg); }
+  function access(k){ let evicted=null;
+    if(store.has(k)) store.delete(k); store.set(k,true);
+    if(store.size>CAP){ const lru=store.keys().next().value; store.delete(lru); evicted=lru; }
+    paint(evicted?`Accessed "${k}". Cache was full → evicted <b>"${evicted}"</b> (least recently used).`:`Accessed "${k}" — now most-recently-used.`, evicted?'bad':'ok'); }
+  const kb=$('#lru-keys'); KEYS.forEach(k=>{ const b=el('button','ghost'); b.textContent=k; b.onclick=()=>access(k); kb.appendChild(b); });
+  $('#lru-reset').onclick=reset; reset();
+})();
+
+/* ══ 10 · EVICTION FAMILY ══ */
+(function(){
+  const CAP=16;
+  function LRU(){ const m=new Map(); return { get:k=>{ if(!m.has(k))return false; const v=m.get(k); m.delete(k); m.set(k,v); return true; },
+    set:k=>{ if(m.has(k)){m.delete(k);m.set(k,1);return;} m.set(k,1); if(m.size>CAP) m.delete(m.keys().next().value); } }; }
+  function FIFO(){ const m=new Map(); return { get:k=>m.has(k), set:k=>{ if(m.has(k))return; m.set(k,1); if(m.size>CAP) m.delete(m.keys().next().value); } }; }
+  function LFU(){ const m=new Map(), f=new Map(); return { get:k=>{ if(!m.has(k))return false; f.set(k,(f.get(k)||0)+1); return true; },
+    set:k=>{ if(m.has(k)){ f.set(k,(f.get(k)||0)+1); return; } if(m.size>=CAP){ let mk=null,mf=Infinity; for(const x of m.keys()){ const c=f.get(x)||0; if(c<mf){mf=c;mk=x;} } m.delete(mk); f.delete(mk); } m.set(k,1); f.set(k,(f.get(k)||1)); } }; }
+  function WTinyLFU(){ const m=new Map(), f=new Map(); let ops=0; const freq=k=>f.get(k)||0; const bump=k=>{ f.set(k,freq(k)+1); if(++ops%(CAP*8)===0){ for(const [x,c] of f) f.set(x,c>>1); } };
+    return { get:k=>{ bump(k); if(!m.has(k))return false; const v=m.get(k); m.delete(k); m.set(k,v); return true; },
+      set:k=>{ bump(k); if(m.has(k)){ m.delete(k); m.set(k,1); return; } if(m.size>=CAP){ const victim=m.keys().next().value; if(freq(k)>freq(victim)){ m.delete(victim); m.set(k,1); } /* else reject candidate */ } else m.set(k,1); } }; }
+  function run(seq){ const policies={ FIFO:FIFO(), LRU:LRU(), LFU:LFU(), 'W-TinyLFU':WTinyLFU() }, res={};
+    for(const name in policies){ const p=policies[name]; let hit=0; for(const k of seq){ if(p.get(k)) hit++; else p.set(k); } res[name]=hit/seq.length; } return res; }
+  function zipf(){ const rnd=mulberry32(7), N=60, s=1.0; const w=[]; let W=0; for(let i=1;i<=N;i++){ const x=1/Math.pow(i,s); w.push(x); W+=x; }
+    const seq=[]; for(let t=0;t<4000;t++){ let r=rnd()*W, i=0; while(r>w[i]){ r-=w[i]; i++; } seq.push('k'+i); } return seq; }
+  function scan(){ const seq=[]; let u=0;
+    for(let w=0;w<4;w++) for(let i=0;i<8;i++) seq.push('hot'+i);          // pre-warm the hot set (raises its frequency)
+    for(let burst=0;burst<20;burst++){ for(let i=0;i<8;i++) seq.push('hot'+i); for(let i=0;i<16;i++) seq.push('scan'+(u++)); }
+    return seq; }
+  function draw(res,label){ const box=$('#ev-bars'); box.innerHTML=''; const max=Math.max(...Object.values(res),0.01);
+    for(const name in res){ const pct=res[name]*100; const row=el('div','barrow'+(res[name]>=max-0.001?' good':''));
+      row.innerHTML=`<span>${name}</span><div class="bar"><span style="width:${Math.max(2,res[name]/max*100)}%"></span></div><span>${pct.toFixed(1)}%</span>`; box.appendChild(row); } }
+  $('#ev-skew').onclick=()=>{ const r=run(zipf()); draw(r); verdict('#ev-verdict','#ev-vtext','ok','Skewed workload: frequency-aware LFU and W-TinyLFU edge out FIFO/LRU — the hot keys stay resident.'); };
+  $('#ev-scan').onclick=()=>{ const r=run(scan()); draw(r); verdict('#ev-verdict','#ev-vtext','bad','Scan workload: LRU and FIFO collapse — each cold burst flushes the hot set — while <b>frequency-aware LFU and W-TinyLFU</b> protect it by rejecting the one-hit scan keys. W-TinyLFU also keeps LRU’s recency edge, so it wins the skew too.'); };
+})();
+
+/* ══ 3 · CACHE-ASIDE ══ */
+(function(){
+  let cache, db;
+  function reset(){ cache=false; db=0; $('#ca-log').innerHTML=''; paint('—'); verdict('#ca-verdict','#ca-vtext','warn','Read once (miss), again (hits), then write and read again.'); }
+  function paint(last){ $('#ca-db').innerHTML=db+'<small>DB queries</small>'; $('#ca-last').innerHTML=last+'<small>last read</small>'; }
+  function read(){ const hit=cache; if(!hit){ db++; cache=true; } const c=el('span','cell '+(hit?'hit':'miss')); c.textContent=hit?'HIT · 1ms':'MISS · 150ms → DB → populate';
+    $('#ca-log').prepend(c); while($('#ca-log').children.length>10) $('#ca-log').lastChild.remove(); paint(hit?'HIT':'MISS');
+    verdict('#ca-verdict','#ca-vtext','ok',hit?'Served from cache in ~1ms — the DB was never touched.':'Cache miss → queried the DB (150ms) and populated the key. Read again for a hit.'); }
+  $('#ca-read').onclick=read;
+  $('#ca-write').onclick=()=>{ cache=false; const c=el('span','cell'); c.textContent='WRITE → invalidate key'; $('#ca-log').prepend(c);
+    verdict('#ca-verdict','#ca-vtext','warn','Wrote the DB and invalidated the cache key. The next read will miss and repopulate.'); };
+  $('#ca-reset').onclick=reset; reset();
+})();
+
+/* ══ 4 · WRITE PATTERNS ══ */
+(function(){
+  let strat='aside', cacheV, dbV, dirty;
+  function reset(){ cacheV=100; dbV=100; dirty=null; paint(); verdict('#wp-verdict','#wp-vtext','warn','Pick a strategy and write.');
+    $('#wp-crash').style.display=strat==='back'?'block':'none'; $('#wp-flush').style.display=strat==='back'?'block':'none'; }
+  function paint(){ $('#wp-cache').textContent='balance = '+(cacheV==null?'(empty)':cacheV); $('#wp-dbv').textContent='balance = '+dbV; $('#wp-dirty').textContent=dirty==null?'—':'balance = '+dirty; }
+  function setS(s){ strat=s; ['aside','through','back'].forEach(x=>$('#wp-'+x).classList.toggle('sel',x===s)); reset(); }
+  ['aside','through','back'].forEach(s=>$('#wp-'+s).onclick=()=>setS(s));
+  $('#wp-write').onclick=()=>{ const V=350;
+    if(strat==='aside'){ dbV=V; cacheV=null; paint(); verdict('#wp-verdict','#wp-vtext','ok','Cache-aside: wrote the DB and invalidated the cache (empty → next read repopulates). Simple, never holds a value the DB doesn’t.'); }
+    else if(strat==='through'){ cacheV=V; dbV=V; paint(); verdict('#wp-verdict','#wp-vtext','ok','Write-through: cache and DB updated together (consistent) — but this write paid ~100ms of DB latency.'); }
+    else { cacheV=V; dirty=V; paint(); verdict('#wp-verdict','#wp-vtext','warn','Write-back: cache updated instantly, DB not touched yet (dirty). Fast — but crash before the flush and it’s gone.'); } };
+  $('#wp-crash').onclick=()=>{ if(dirty==null){ verdict('#wp-verdict','#wp-vtext','warn','Nothing dirty to lose — write first.'); return; } dirty=null; cacheV=null;
+    paint(); verdict('#wp-verdict','#wp-vtext','bad',`💥 Cache crashed before flushing. DB still says <b>${dbV}</b>; the dirty write is <b>LOST</b>. This is why write-back is only for loss-tolerant data.`); };
+  $('#wp-flush').onclick=()=>{ if(dirty==null){ verdict('#wp-verdict','#wp-vtext','warn','Nothing to flush.'); return; } dbV=dirty; dirty=null; paint(); verdict('#wp-verdict','#wp-vtext','ok','Flushed the dirty write to the DB — now consistent. In the happy path write-back is fastest and coalesces repeats.'); };
+  $('#wp-reset').onclick=reset; setS('aside');
+})();
+
+/* ══ 5 · STAMPEDE ══ */
+(function(){
+  let fix='none';
+  function setF(f){ fix=f; ['none','sf','swr'].forEach(x=>$('#st-'+x).classList.toggle('sel',x===f)); }
+  ['none','sf','swr'].forEach(f=>$('#st-'+f).onclick=()=>setF(f));
+  $('#st-run').onclick=()=>{ const N=50; let dbCalls, served=N, kind, msg;
+    if(fix==='none'){ dbCalls=N; kind='bad'; msg=`Naive: all 50 missed at once → <b>50 DB calls</b>. The cache aimed a firehose at the database — this is how a cache causes an outage.`; }
+    else if(fix==='sf'){ dbCalls=1; kind='ok'; msg=`Single-flight: one request recomputed, the other 49 awaited its result → <b>1 DB call</b>. Best for a single hot key.`; }
+    else { dbCalls=0; kind='ok'; msg=`Stale-while-revalidate: all 50 served the stale value instantly (0 blocking calls) with 1 background refresh in flight → zero user-facing latency.`; }
+    $('#st-db').innerHTML=dbCalls+'<small>DB calls</small>'; $('#st-served').innerHTML=served+'<small>requests served</small>'; verdict('#st-verdict','#st-vtext',kind,msg); };
+  setF('none');
+})();
+
+/* ══ 9 · XFETCH ══ */
+(function(){
+  let mode='hard', beta=1;
+  function setM(m){ mode=m; $('#xf-hard').classList.toggle('sel',m==='hard'); $('#xf-x').classList.toggle('sel',m==='x'); }
+  $('#xf-hard').onclick=()=>setM('hard'); $('#xf-x').onclick=()=>setM('x');
+  $('#xf-beta').oninput=e=>{ beta=+e.target.value; $('#xf-bval').textContent=beta.toFixed(1); };
+  $('#xf-run').onclick=()=>{ const TICKS=30, READERS=10, TTL=10, DELTA=2; const rnd=mulberry32(42);
+    const counts=new Array(TICKS).fill(0); let expiry=TTL, total=0;
+    for(let t=1;t<=TICKS;t++){ let recomputed=false;
+      for(let r=0;r<READERS;r++){
+        if(mode==='hard'){ if(t>=expiry && !recomputed){ recomputed=true; } }
+        else { const early = (t - DELTA*beta*Math.log(rnd())) >= expiry; if(t>=expiry || (early && !recomputed && t>=expiry-DELTA*beta)){ if(!recomputed){ recomputed=true; } } }
+      }
+      // simpler faithful model: hard TTL recomputes the whole batch at expiry; xfetch: each reader may trigger 1 early refresh
+      if(mode==='hard'){ if(t===expiry){ counts[t-1]=READERS; total+=READERS; expiry=t+TTL; } }
+      else { let fired=0; for(let r=0;r<READERS;r++){ const early=(t - DELTA*beta*Math.log(Math.max(1e-9,rnd()))) >= expiry; if(early){ fired=1; break; } } if(fired){ counts[t-1]=1; total+=1; expiry=t+TTL; } }
+    }
+    const chart=$('#xf-chart'); chart.innerHTML=''; const max=Math.max(...counts,1);
+    counts.forEach((c,i)=>{ const col=el('div','col'); const bar=el('div','gp'); bar.style.background=c>=READERS?'var(--bad)':'var(--good)'; bar.style.height=(c/max*120)+'px';
+      const rn=el('div','rn'); rn.textContent=(i+1)%5===0?(i+1):''; col.appendChild(bar); col.appendChild(rn); chart.appendChild(col); });
+    $('#xf-total').textContent=`${total} total recomputes · peak ${max}/tick`;
+    if(mode==='hard') verdict('#xf-verdict','#xf-vtext','bad',`Hard TTL: the whole herd (${READERS}) recomputes at each expiry — synchronized spikes.`);
+    else verdict('#xf-verdict','#xf-vtext','ok',`XFetch: recomputes spread to ~1 per refresh (peak ${max}) — one request refreshes ahead of the cliff, so the herd never forms.`); };
+  setM('hard'); $('#xf-run').click();
+})();
+
+/* ══ 6 · CONSISTENCY RACE ══ */
+(function(){
+  let db, cache, ver, readVal, cas;
+  function reset(){ db='v1'; cache='(empty)'; ver=1; readVal=null; cas=$('#cr-cas').checked; paint(); verdict('#cr-verdict','#cr-vtext','warn','Step ①②③ in order, with CAS off then on.'); }
+  function paint(){ $('#cr-db').textContent='k = '+db; $('#cr-cache').textContent='k = '+cache; }
+  $('#cr-s1').onclick=()=>{ readVal='v1'; verdict('#cr-verdict','#cr-vtext','warn','Reader read <b>v1</b> from the DB, then stalled (GC pause) before writing the cache.'); };
+  $('#cr-s2').onclick=()=>{ db='v2'; ver=2; cache='(empty)'; paint(); verdict('#cr-verdict','#cr-vtext','warn','Writer set DB=<b>v2</b> and deleted the cache key. So far so good.'); };
+  $('#cr-s3').onclick=()=>{ if(readVal==null){ verdict('#cr-verdict','#cr-vtext','warn','Do step ① first.'); return; } cas=$('#cr-cas').checked;
+    if(cas){ paint(); verdict('#cr-verdict','#cr-vtext','ok','Reader tried to write its stale v1 with version 1 &lt; current 2 → <b>rejected</b>. Cache stays correct.'); }
+    else { cache='v1'; paint(); verdict('#cr-verdict','#cr-vtext','bad','Reader wrote its old <b>v1</b> into the cache <em>after</em> the delete → cache serves v1 forever while the DB says v2. Stale until TTL.'); } };
+  $('#cr-cas').onchange=reset; $('#cr-reset').onclick=reset; reset();
+})();
+
+/* ══ 11 · PENETRATION ══ */
+(function(){
+  function Bloom(m,k){ const bits=new Uint8Array(m); const idx=(s,i)=>{ let h=hash32(s+'#'+i); return h%m; };
+    return { add:s=>{ for(let i=0;i<k;i++) bits[idx(s,i)]=1; }, has:s=>{ for(let i=0;i<k;i++) if(!bits[idx(s,i)]) return false; return true; } }; }
+  $('#pn-run').onclick=()=>{ const useBloom=$('#pn-bloom').checked; const rnd=mulberry32(0x5eed); const real=new Set();
+    for(let i=0;i<1000;i++) real.add('real:'+i); const bloom=Bloom(9600,7); if(useBloom) for(const r of real) bloom.add(r);
+    let db=0, passed=0; for(let i=0;i<500;i++){ const key='bogus:'+Math.floor(rnd()*1e9);
+      if(useBloom && !bloom.has(key)) continue; // definitely absent → skip DB
+      passed++; db++; /* hits DB, finds nothing */ }
+    const fp=useBloom?(passed/500*100):0;
+    $('#pn-db').innerHTML=db+'<small>DB queries</small>'; $('#pn-fp').innerHTML=(useBloom?fp.toFixed(1)+'%':'—')+'<small>bloom false-positive rate</small>';
+    if(!useBloom) verdict('#pn-verdict','#pn-vtext','bad','No guard: 500 bogus keys → <b>500 DB queries</b>. The cache protected nothing — every nonexistent key fell through.');
+    else verdict('#pn-verdict','#pn-vtext','ok',`Bloom guard: ~${(100-fp).toFixed(0)}% rejected as "definitely absent" → DB queries drop to <b>${db}</b> (the ${fp.toFixed(1)}% false-positive residual). Pair with short-TTL negative caching.`); };
+})();
+
+/* ══ 8 · HOT KEYS ══ */
+(function(){
+  const SHARDS=6, SERVERS=8, N_REPL=6; let mode='none';
+  function setM(m){ mode=m; ['none','near','repl'].forEach(x=>$('#hk-'+x).classList.toggle('sel',x==='none'?m==='none':x==='near'?m==='near':m==='repl')); }
+  $('#hk-none').onclick=()=>setM('none'); $('#hk-near').onclick=()=>setM('near'); $('#hk-repl').onclick=()=>setM('repl');
+  $('#hk-run').onclick=()=>{ const total=10000; const load=new Array(SHARDS).fill(0); const rnd=mulberry32(99); let hotShard=hash32('celebrity')%SHARDS;
+    if(mode==='none'){ load[hotShard]=total; }
+    else if(mode==='near'){ load[hotShard]=SERVERS; /* one warm-up per app server, rest served from L1 */ }
+    else { for(let i=0;i<total;i++){ const r=Math.floor(rnd()*N_REPL); load[hash32('celebrity#'+r)%SHARDS]++; } }
+    const box=$('#hk-shards'); box.innerHTML=''; const max=Math.max(...load,1);
+    load.forEach((v,i)=>{ const s=el('div','shard'+(v>=max&&v>total/SHARDS?' hot':'')); s.innerHTML=`<div style="font-size:10px;color:var(--muted)">shard ${i}</div><div class="sv">${v.toLocaleString()}</div>`; box.appendChild(s); });
+    if(mode==='none') verdict('#hk-verdict','#hk-vtext','bad',`Unmitigated: one shard absorbs all <b>${total.toLocaleString()}</b> reads — a hotspot that melts a single node.`);
+    else if(mode==='near') verdict('#hk-verdict','#hk-vtext','ok',`Near-cache (L1 per app server): the shared L2 sees only ~<b>${SERVERS}</b> reads (one warm-up each); the rest are served locally. Cost: brief L1 staleness.`);
+    else verdict('#hk-verdict','#hk-vtext','ok',`Replication across ${N_REPL} keys: load spreads ~${N_REPL}× so the hottest shard drops to ~${Math.max(...load).toLocaleString()}. Cost: N× memory + write fan-out. (Hot writes need a sharded counter instead.)`); };
+  setM('none'); $('#hk-run').click();
+})();
+
+/* ══ 13 · RESILIENCE ══ */
+(function(){
+  const CAP=60, RATE=400, ROUNDS=12;
+  function sim(fixed){ const out=[]; let warm=0; // cache keys warmed
+    for(let r=1;r<=ROUNDS;r++){ const missRate=Math.max(0,1-warm/300); const demand=Math.round(RATE*missRate);
+      let served, inflight;
+      if(!fixed){ inflight=demand; served = inflight<=CAP ? demand : 0; /* overloaded → collapse */ }
+      else { inflight=Math.min(demand,CAP); served=inflight; }
+      warm += served; // successful DB reads warm the cache
+      const total=Math.round(RATE*missRate)+ (RATE-Math.round(RATE*missRate)); // = RATE
+      const hitServed = RATE - Math.round(RATE*missRate);
+      const success = Math.round((hitServed+served)/RATE*100);
+      out.push({ success, inflight }); }
+    return out; }
+  $('#rs-run').onclick=()=>{ const fixed=$('#rs-fix').checked; const data=sim(fixed); const chart=$('#rs-chart'); chart.innerHTML='';
+    data.forEach((d,i)=>{ const col=el('div','col'); const bar=el('div','gp'); bar.style.background=d.success>60?'var(--good)':d.success>20?'var(--amber)':'var(--bad)'; bar.style.height=(d.success/100*120)+'px';
+      const rn=el('div','rn'); rn.textContent=i+1; col.appendChild(bar); col.appendChild(rn); chart.appendChild(col); });
+    const last=data[data.length-1].success;
+    if(!fixed) verdict('#rs-verdict','#rs-vtext','bad',`Naive: in-flight (${RATE}) ≫ capacity (${CAP}) every round → goodput stuck near <b>0%</b>, the cache can’t refill. Metastable collapse.`);
+    else verdict('#rs-verdict','#rs-vtext','ok',`Protected: in-flight capped at ${CAP}, excess shed fast → the DB stays healthy and success recovers to <b>${last}%</b> as the cache warms.`); };
+  $('#rs-fix').onchange=()=>$('#rs-run').click(); $('#rs-run').click();
+})();
+
+/* ══ 7 · CONSISTENT HASHING ══ */
+(function(){
+  const VN=100, keys=Array.from({length:10000},(_,i)=>'key:'+i); let scheme='ring', nodes=['A','B','C','D'];
+  function ringFor(list){ const ring=[]; for(const n of list) for(let v=0;v<VN;v++) ring.push({h:hash32(n+'#'+v),n}); ring.sort((a,b)=>a.h-b.h); return ring; }
+  function ringNode(ring,key){ const h=hash32(key); let lo=0,hi=ring.length; while(lo<hi){ const m=(lo+hi)>>1; if(ring[m].h<h) lo=m+1; else hi=m; } return ring[lo%ring.length].n; }
+  function assign(list){ const map=new Map(); if(scheme==='naive'){ for(const k of keys) map.set(k, list[hash32(k)%list.length]); }
+    else { const ring=ringFor(list); for(const k of keys) map.set(k, ringNode(ring,k)); } return map; }
+  function dist(map){ const d=new Map(); for(const n of nodes) d.set(n,0); for(const v of map.values()) d.set(v,(d.get(v)||0)+1); return d; }
+  let current=null;
+  function paintDist(){ const d=dist(current); const box=$('#ch-dist'); box.innerHTML=''; const max=Math.max(...d.values(),1);
+    for(const [n,c] of d){ const row=el('div','barrow'); row.innerHTML=`<span>node ${n}</span><div class="bar"><span style="width:${c/max*100}%"></span></div><span>${c}</span>`; box.appendChild(row); } }
+  function reset(){ nodes=['A','B','C','D']; current=assign(nodes); $('#ch-remap').innerHTML='—<small>of 10,000 keys remapped on the last change</small>'; paintDist(); verdict('#ch-verdict','#ch-vtext','warn','Add a node under each scheme and compare how many keys remap.'); }
+  function setS(s){ scheme=s; $('#ch-naive').classList.toggle('sel',s==='naive'); $('#ch-ring').classList.toggle('sel',s==='ring'); reset(); }
+  $('#ch-naive').onclick=()=>setS('naive'); $('#ch-ring').onclick=()=>setS('ring');
+  function change(newNodes,label){ const before=current; const after=assign(newNodes); let moved=0; for(const k of keys) if(before.get(k)!==after.get(k)) moved++;
+    nodes=newNodes; current=after; const pct=(moved/keys.length*100); $('#ch-remap').innerHTML=`${pct.toFixed(1)}%<small>of 10,000 keys remapped on the last change</small>`; paintDist();
+    const bad=pct>40; verdict('#ch-verdict','#ch-vtext',bad?'bad':'ok',`${label}: <b>${moved.toLocaleString()}</b> keys (${pct.toFixed(1)}%) remapped. ${scheme==='naive'?'Naive modulo re-homes almost everything — a cache-wide miss storm.':'Only ~1/N of keys moved — the rest stay put.'}`); }
+  $('#ch-add').onclick=()=>{ const next=String.fromCharCode(65+nodes.length); change([...nodes,next],`Added node ${next} (${nodes.length}→${nodes.length+1})`); };
+  $('#ch-remove').onclick=()=>{ if(nodes.length<=1) return; const dropped=nodes[nodes.length-1]; change(nodes.slice(0,-1),`Removed node ${dropped} (${nodes.length}→${nodes.length-1})`); };
+  $('#ch-reset').onclick=reset; setS('ring');
+})();
+
+/* ══ 12 · SIZING ══ */
+(function(){
+  const g=id=>$(id);
+  function fmtGB(b){ const gb=b/1e9; return gb>=1?gb.toFixed(0)+' GB':(b/1e6).toFixed(0)+' MB'; }
+  function calc(){ const qps=+g('#sz-qps').value*1000, hit=+g('#sz-hit').value/1000, items=+g('#sz-items').value*1e6, size=+g('#sz-size').value*1024, rep=+g('#sz-rep').value;
+    g('#sz-qval').textContent=(qps/1000)+'k'; g('#sz-hval').textContent=(hit*100).toFixed(1)+'%'; g('#sz-ival').textContent=g('#sz-items').value; g('#sz-sval').textContent=g('#sz-size').value; g('#sz-rval').textContent=rep;
+    const dbqps=Math.round(qps*(1-hit)); g('#sz-dbqps').textContent=dbqps.toLocaleString()+' qps';
+    const mem=items*size*1.30*rep*1.30; g('#sz-mem').textContent=fmtGB(mem);
+    const lat=(hit*1+(1-hit)*50); g('#sz-lat').textContent=lat.toFixed(2)+' ms';
+    const sweep=[0.5,0.8,0.9,0.95,0.99,0.999]; let prev=null; const rows=sweep.map(h=>{ const d=Math.round(100000*(1-h)); const vs=prev!=null?(prev/d).toFixed(1)+'× fewer':'—'; prev=d; return `<tr><td>${(h*100).toFixed(1)}%</td><td>${d.toLocaleString()}</td><td style="color:var(--muted)">${vs}</td></tr>`; });
+    g('#sz-sweep').innerHTML=rows.join(''); }
+  ['#sz-qps','#sz-hit','#sz-items','#sz-size','#sz-rep'].forEach(id=>g(id).oninput=calc); calc();
+})();
+</script>
+</body>
+</html>

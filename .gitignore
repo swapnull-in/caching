@@ -10,3 +10,4 @@ node_modules/
 # Logs & scratch
 *.log
 npm-debug.log*
+.wrangler/
