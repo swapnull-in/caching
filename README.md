@@ -41,6 +41,12 @@ evictions, stampedes, and races happen.
 | `npm run phase5` | **Cache stampede** + 3 fixes: single-flight, jittered TTL, stale-while-revalidate | the "interview meat" |
 | `npm run phase6` | **The consistency race** — why "update DB, delete cache" still serves stale, + fixes; penetration | consistency |
 | `npm run phase7` | **Distributed cache** — consistent hashing + virtual nodes, from scratch | building a cache |
+| `npm run phase8` | **Hot keys** — the celebrity problem; near-cache & replication for hot reads, sharded counters for hot writes | scaling |
+| `npm run phase9` | **Probabilistic early expiration (XFetch)** — the lock-free stampede fix that spreads recomputes | the "interview meat" |
+| `npm run phase10` | **Eviction family** — FIFO/LRU/LFU vs **W-TinyLFU**; why a scan wrecks LRU but not admission | eviction |
+| `npm run phase11` | **Cache penetration** — a real bloom filter + short-TTL negative caching (read-after-create gotcha) | the "interview meat" |
+| `npm run phase12` | **Sizing** — DB-load = QPS×(1−hit) nonlinearity, memory & latency formulas | capacity math |
+| `npm run phase13` | **Cache-down resilience** — concurrency limiter + circuit breaker so the DB survives a cold cache | fault tolerance |
 
 Read `src/phase1/cache.ts` and `src/phase2/lru.ts` first — they're the whole
 engines in a few dozen commented lines each.
@@ -79,6 +85,12 @@ src/
   phase5/  stampede + the three fixes
   phase6/  the consistency race + penetration
   phase7/  consistent hashing (distributed cache)
+  phase8/  hot keys — near-cache, replication, sharded counters
+  phase9/  probabilistic early expiration (XFetch)
+  phase10/ eviction family — FIFO/LRU/LFU/W-TinyLFU
+  phase11/ penetration — bloom filter + negative caching
+  phase12/ sizing math (DB load, memory, latency)
+  phase13/ cache-down resilience — limiter + circuit breaker
 ```
 
 ## License
