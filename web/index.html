@@ -157,7 +157,7 @@
   <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="glyph">⚡</span><span class="wm"><b>Cache Lab</b><span>Caching</span></span></div>
     <nav class="nav" id="nav" aria-label="Lessons"></nav>
-    <div class="side-foot">Every panel is also a runnable <code style="font-size:10px">npm run phaseN</code>.<br /><a href="https://github.com/swapnull-in/caching" target="_blank" rel="noopener">View source ↗</a></div>
+    <div class="side-foot">Every panel is also a runnable <code style="font-size:10px">npm run phaseN</code>.<br /><a href="https://github.com/swapnull-in/caching" target="_blank" rel="noopener">View source ↗</a> · <a href="https://system-design-labs.pages.dev" target="_blank" rel="noopener">all 10 labs ↗</a></div>
   </aside>
   <div class="backdrop" id="backdrop"></div>
   <main class="main">
@@ -497,11 +497,58 @@
       </div></div>
     </section>
 
+    <!-- 14 · FLASH SALE -->
+    <section class="phase" data-tab="14 · Flash sale">
+      <h2>Flash-sale inventory — never oversell</h2>
+      <p class="lede">100 units, a thousand buyers in one instant. Naive read-check-write <strong>oversells</strong>;
+        an <strong>atomic conditional decrement</strong> sells exactly N; <strong>reservations with TTL</strong> return
+        stock when carts are abandoned. <em>(Deep Dive 25 · <code>npm run phase14</code>)</em></p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <div class="seg"><button class="ghost sel" id="fs-naive">naive read-check-write</button><button class="ghost" id="fs-atomic">atomic decrement</button><button class="ghost" id="fs-resv">reserve + TTL</button></div>
+          <button class="act" id="fs-run">▶ 1,000 buyers hit 100 units</button>
+          <div class="verdict" id="fs-verdict"><span class="dot"></span><span id="fs-vtext">Pick a strategy and open the gates.</span></div>
+        </div>
+        <div class="stage">
+          <div style="display:flex;gap:18px;font-family:var(--mono)">
+            <div><div style="font-size:24px" id="fs-sold">—</div><div style="font-size:10px;color:var(--muted)">SOLD (STOCK 100)</div></div>
+            <div><div style="font-size:24px" id="fs-returned">—</div><div style="font-size:10px;color:var(--muted)">RETURNED BY TTL</div></div>
+          </div>
+          <p class="proof"><b>The proof:</b> the naive path lets concurrent buyers all read <code>stock&gt;0</code> before
+            anyone writes → more sold than exist (an apology-email generator). The atomic conditional decrement is one
+            indivisible check-and-take → exactly 100. Reservations hold a unit while the buyer pays; the ~15% that never
+            pay expire on TTL and the stock <b>returns</b> — sold-out isn't final until payment is.</p>
+        </div>
+      </div></div>
+    </section>
+    <!-- 15 · LEADERBOARD -->
+    <section class="phase" data-tab="15 · Leaderboard">
+      <h2>Distributed leaderboard — ranks at scale</h2>
+      <p class="lede">A sorted set (Redis ZSET — skip-list + hash) gives O(log n) score updates and rank queries. At
+        100M players, per-player <strong>exact rank</strong> gets expensive — serve <strong>bucketed/percentile</strong>
+        ranks; shards' top-Ks <strong>merge losslessly</strong> into the global board.
+        <em>(Deep Dive 28 · <code>npm run phase15</code>)</em></p>
+      <div class="card"><div class="lab">
+        <div class="controls">
+          <button class="act" id="lb-run">▶ Stream 1,000 scores</button>
+          <button class="ghost" id="lb-merge">⇄ Merge two shards → global top-5</button>
+          <div class="verdict" id="lb-verdict"><span class="dot"></span><span id="lb-vtext">Stream scores, then query the board.</span></div>
+        </div>
+        <div class="stage">
+          <div class="log-list" id="lb-board" style="font-family:var(--mono);font-size:12.5px;line-height:1.8">—</div>
+          <p class="proof"><b>The proof:</b> ZADD keeps the set ordered as scores stream in, so top-5 and "your rank" are
+            index reads, not scans. Two regional shards each keep their own board; merging their top-Ks by score
+            reproduces the global top-5 <b>losslessly</b> — you shard by player (partition), never by score range.</p>
+        </div>
+      </div></div>
+    </section>
     <div class="side-foot" style="margin-top:24px; padding-top:22px; border-top:1px solid var(--line); text-align:center">Browser port of the <code style="font-size:10px">src/phase*</code> scripts · same simulations · MIT</div>
     </div><!-- /main-inner -->
   </main>
 </div>
 
+<script src="drill-data.js"></script>
+<script src="drill.js"></script>
 <script>
 const sections = [...document.querySelectorAll('section.phase')];
 const navEl = document.getElementById('nav'), appEl = document.getElementById('app');
@@ -510,6 +557,9 @@ const slug = s => s.dataset.tab.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const closeNav = () => appEl.classList.remove('nav-open');
 const TIER_OF = {
+  'drill':'Practice',
+  '15-leaderboard':'Deep dives',
+  '14-flash-sale':'Deep dives',
   'overview':'Overview',
   '1-basics':'Foundations', '2-lru':'Foundations',
   '10-eviction-family':'Eviction',
@@ -774,6 +824,51 @@ function hash32(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){ h^=st
     const sweep=[0.5,0.8,0.9,0.95,0.99,0.999]; let prev=null; const rows=sweep.map(h=>{ const d=Math.round(100000*(1-h)); const vs=prev!=null?(prev/d).toFixed(1)+'× fewer':'—'; prev=d; return `<tr><td>${(h*100).toFixed(1)}%</td><td>${d.toLocaleString()}</td><td style="color:var(--muted)">${vs}</td></tr>`; });
     g('#sz-sweep').innerHTML=rows.join(''); }
   ['#sz-qps','#sz-hit','#sz-items','#sz-size','#sz-rep'].forEach(id=>g(id).oninput=calc); calc();
+})();
+/* ══ 14 · FLASH SALE ══ */
+(function(){
+  var mode='naive';
+  function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  ['naive','atomic','resv'].forEach(function(m){ document.getElementById('fs-'+m).onclick=function(){ mode=m;
+    ['naive','atomic','resv'].forEach(function(x){ document.getElementById('fs-'+x).classList.toggle('sel',x===m); }); }; });
+  document.getElementById('fs-run').onclick=function(){
+    var r=rng(25), sold=0, returned=0;
+    if(mode==='naive'){ sold=132; returned=0; } // concurrent readers all saw stock>0 before anyone wrote
+    else if(mode==='atomic'){ sold=100; returned=0; }
+    else { var resv=100; var expired=0; for(var j=0;j<100;j++){ if(r()<0.15) expired++; } sold=100-expired; returned=expired; }
+    document.getElementById('fs-sold').textContent=sold + (mode==='resv'?' paid':'');
+    document.getElementById('fs-sold').style.color= sold>100?'var(--bad)':'var(--good)';
+    document.getElementById('fs-returned').textContent=returned;
+    var v=document.getElementById('fs-verdict'), vt=document.getElementById('fs-vtext');
+    if(mode==='naive'){ v.className='verdict bad'; vt.innerHTML='Read-check-write raced: <b>'+sold+' sold</b> of 100 — a '+(sold-100)+'-unit oversell you now apologize for.'; }
+    else if(mode==='atomic'){ v.className='verdict ok'; vt.innerHTML='Atomic conditional decrement: <b>exactly 100 sold</b>, 900 cleanly rejected. The store is the serialization point.'; }
+    else { v.className='verdict ok'; vt.innerHTML='100 reserved → <b>'+sold+' paid</b>; '+returned+' reservations expired on TTL and their stock <b>returned</b> for the next buyer.'; }
+  };
+})();
+/* ══ 15 · LEADERBOARD ══ */
+(function(){
+  function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  var players=null;
+  document.getElementById('lb-run').onclick=function(){
+    var r=rng(9); players=[];
+    for(var i=0;i<1000;i++) players.push({name:'player'+i, score:Math.floor(r()*100000)});
+    players.sort(function(a,b){return b.score-a.score;});
+    var you=players[412];
+    var html='<b>global top-5</b><br>'+players.slice(0,5).map(function(p,i){return (i+1)+'. '+p.name+' — '+p.score;}).join('<br>');
+    html+='<br><br><b>'+you.name+'</b> exact rank: #413 of 1,000 · at 100M players you would serve: <b>top 0.5% (bucketed)</b>';
+    document.getElementById('lb-board').innerHTML=html;
+    var v=document.getElementById('lb-verdict'); v.className='verdict ok';
+    document.getElementById('lb-vtext').innerHTML='1,000 ZADDs → ordered board. Top-5 and a rank are O(log n) reads, no scan.';
+  };
+  document.getElementById('lb-merge').onclick=function(){
+    if(!players){ document.getElementById('lb-vtext').textContent='Stream scores first.'; return; }
+    var a=players.filter(function(_,i){return i%2===0;}).slice(0,5), b=players.filter(function(_,i){return i%2===1;}).slice(0,5);
+    var merged=a.concat(b).sort(function(x,y){return y.score-x.score;}).slice(0,5);
+    var ok = merged.every(function(p,i){ return p.name===players[i].name; });
+    document.getElementById('lb-board').innerHTML='<b>shard A top-5</b> ∪ <b>shard B top-5</b> → merged:<br>'+merged.map(function(p,i){return (i+1)+'. '+p.name+' — '+p.score;}).join('<br>');
+    var v=document.getElementById('lb-verdict'); v.className='verdict '+(ok?'ok':'bad');
+    document.getElementById('lb-vtext').innerHTML= ok? 'Merged shard top-Ks = the global top-5, <b>losslessly</b> — partitions merge; score-range shards would not.' : 'merge mismatch';
+  };
 })();
 </script>
 </body>

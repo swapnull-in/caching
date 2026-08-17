@@ -47,6 +47,8 @@ evictions, stampedes, and races happen.
 | `npm run phase11` | **Cache penetration** — a real bloom filter + short-TTL negative caching (read-after-create gotcha) | the "interview meat" |
 | `npm run phase12` | **Sizing** — DB-load = QPS×(1−hit) nonlinearity, memory & latency formulas | capacity math |
 | `npm run phase13` | **Cache-down resilience** — concurrency limiter + circuit breaker so the DB survives a cold cache | fault tolerance |
+| `npm run phase14` | **Flash-sale inventory** — the oversell race, atomic decrement, reservations with TTL *(Deep Dive 25)* | worked problem |
+| `npm run phase15` | **Distributed leaderboard** — a ZSET from scratch, ranks at scale, shard-merge *(Deep Dive 28)* | worked problem |
 
 Read `src/phase1/cache.ts` and `src/phase2/lru.ts` first — they're the whole
 engines in a few dozen commented lines each.
@@ -106,6 +108,14 @@ src/
   phase12/ sizing math (DB load, memory, latency)
   phase13/ cache-down resilience — limiter + circuit breaker
 ```
+
+## Drill & study guide
+
+The web lab has a **Drill** tab — the matching study module's interview questions
+and cheat-sheet one-liners as click-to-reveal cards (active recall: answer out
+loud before revealing). [`STUDY-GUIDE.md`](STUDY-GUIDE.md) maps every phase to
+the exact module section it implements, with the staff-level insight quoted, and
+points to the deep dives to read next.
 
 ## License
 
