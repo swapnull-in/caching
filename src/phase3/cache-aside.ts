@@ -22,7 +22,7 @@
  * just always miss and hit the DB — degraded, not broken).
  */
 
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 import { log } from "../lib/log.ts";
 
 const redis = new Redis();

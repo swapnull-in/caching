@@ -1,6 +1,6 @@
 # Study Guide — Caching in TypeScript
 
-This repo is the runnable companion to **Core Course/03-caching.md**. Study loop: run a phase (`npm run phaseN`) and watch the log, then read its source top-to-bottom (the header comments teach the concept), then quiz yourself in the web lab's **Drill** tab (`npm run web`), and finally read the matching module section for the interview-depth version — the staff framing, the decision table, and the failure modes. One phase per sitting beats a binge; the drill cards are built for spaced repetition.
+This repo is the runnable companion to **[Core Course/03-caching.md](https://github.com/swapnull-in/system-design/blob/main/Core%20Course/03-caching.md)**. Study loop: run a phase (`npm run phaseN`) and watch the log, then read its source top-to-bottom (the header comments teach the concept), then quiz yourself in the web lab's **Drill** tab (`npm run web`), and finally read the matching module section for the interview-depth version — the staff framing, the decision table, and the failure modes. One phase per sitting beats a binge; the drill cards are built for spaced repetition.
 
 ## Phase → module mapping
 
@@ -22,9 +22,9 @@ This repo is the runnable companion to **Core Course/03-caching.md**. Study loop
 
 ## Go deeper
 
-- **Deep Dives/01-redis.md** — the engine every phase leans on: data structures, persistence (RDB/AOF), Cluster hash slots, and why Redlock isn't a correctness lock.
-- **Deep Dives/16-pattern-scaling-reads.md** — where caching sits in the full read-scaling toolkit (replicas, denormalization, CDN) and when to reach for which layer.
-- **Deep Dives/28-distributed-leaderboard.md** — write-back aggregation and sharded counters (Phases 4 and 8) applied to a real design under hot-write pressure.
-- **Deep Dives/25-flash-sale-inventory.md** — the hot-key and stampede problems (Phases 5 and 8) at their most violent, plus why you can't cache correctness-critical inventory.
+- **[Deep Dives/01-redis.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/01-redis.md)** — the engine every phase leans on: data structures, persistence (RDB/AOF), Cluster hash slots, and why Redlock isn't a correctness lock.
+- **[Deep Dives/16-pattern-scaling-reads.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/16-pattern-scaling-reads.md)** — where caching sits in the full read-scaling toolkit (replicas, denormalization, CDN) and when to reach for which layer.
+- **[Deep Dives/28-distributed-leaderboard.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/28-distributed-leaderboard.md)** — write-back aggregation and sharded counters (Phases 4 and 8) applied to a real design under hot-write pressure.
+- **[Deep Dives/25-flash-sale-inventory.md](https://github.com/swapnull-in/system-design/blob/main/Deep%20Dives/25-flash-sale-inventory.md)** — the hot-key and stampede problems (Phases 5 and 8) at their most violent, plus why you can't cache correctness-critical inventory.
 - **DDIA ch. 5 (Replication)** — replication lag is the hidden term in your staleness budget; explains why double-delete waits past replica lag (Phase 6).
 - **DDIA ch. 3 (Storage & Retrieval)** — the DB buffer pool is the cache under your cache; often the highest-ROI fix before Redis exists at all.
